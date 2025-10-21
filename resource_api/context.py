@@ -4,7 +4,7 @@ import datetime # Needed for time-based contextual checks
 Decision = Literal["allow", "challenge", "deny"]
 
 SENSITIVE_PATHS = {"/export"} # students can extend
-BUSINESS_HOURS = range(7, 20) # 07:00–19:59 (UTC)
+BUSINESS_HOURS = range(7, 19) # 07:00–18:59 (UTC)
 
 def evaluate_request_context(claims: dict, path: str, method: str) -> Decision:
     role = claims.get("role")
@@ -41,9 +41,7 @@ def evaluate_request_context(claims: dict, path: str, method: str) -> Decision:
             # Original challenge logic is now contextual based on time
             return "challenge" 
         
-        # Original rule (Minimal baseline) logic:
-        # If the non-admin user is accessing the sensitive path DURING business hours,
-        # and has not been challenged by the risk_score check, allow the request.
+        
         
     # Default: If no explicit deny or challenge rule is triggered, allow access.
     return "allow"
