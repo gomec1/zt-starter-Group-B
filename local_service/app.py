@@ -13,6 +13,7 @@ SESSIONS: dict[str, dict] = {}  # jti -> claims
 
 # Added trusted devices. Only trusted devices can log in or access resources
 TRUSTED_DEVICES = ["lab-1", "lab-2", "office-pc"] 
+ADMIN_TRUSTED_DEVICES = ["lab-1"]
 
 # Added Business Hours. Login or resource access only during Business Hours. Adjust Business Hours in .env if needed.
 load_dotenv()
@@ -29,7 +30,7 @@ class LoginIn(BaseModel):
 @APP.post("/local-login")
 def local_login(inp: LoginIn, resp: Response):
     # Local user base (decoupled from IdP)
-    if not (inp.username == "local" and inp.password == "local"):
+    if not ((inp.username == "local" and inp.password == "local") or (inp.username == "admin" and inp.password == "admin")):
         raise HTTPException(status_code=401, detail="Login denied: Bad local credentials")
    
     # Added condition: Only trusted devices can log in
@@ -41,9 +42,11 @@ def local_login(inp: LoginIn, resp: Response):
     if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
         raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
     
+    role = "admin" if (inp.username == "admin" and inp.password == "admin") else "local_user"
+
     claims = {
         "sub": inp.username, 
-        "role": "local_user", 
+        "role": role, 
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=10)).timestamp()), 
         "typ": "local",
@@ -56,6 +59,7 @@ def local_login(inp: LoginIn, resp: Response):
         "status": "local_session_issued", 
         "deviceid": inp.deviceid, # Return deviceid added
         "time": now, # Return time of login
+        "role": role, # Role added
         } 
 
 @APP.get("/local-resource")
@@ -78,6 +82,42 @@ def local_resource(req: Request):
     if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
         raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
 
+    return {
+        "status": "ok-local", 
+        "subject": claims["sub"], 
+        "role": claims["role"],
+        "deviceid": claims["deviceid"], # Return deviceid to show which device logged in
+        }
+
+
+@APP.get("/admin")
+def local_resource(req: Request):
+    token = req.cookies.get("local_session")
+    if not token:
+        raise HTTPException(status_code=401, detail="Access denied: Missing local session")
+    try:
+        claims = jwt.decode(token, LOCAL_SECRET, algorithms=[LOCAL_ALG]) # Exp time is already checked during decode
+    except Exception:
+        raise HTTPException(status_code=401, detail="Access denied: Invalid local session")
+    # Minimal local check; students can add local context rules here too
+    
+    # Added condition: Only trusted devices can access resources
+    if claims["deviceid"] not in TRUSTED_DEVICES: 
+        raise HTTPException(status_code=403, detail="Access denied: Device not trusted")
+
+    # Added condition: Access only during Business Hours
+    now = datetime.now(TZ)
+    if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
+        raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
+
+    # Added admin condition: Access only for admins
+    if not claims["role"] == "admin":
+        raise HTTPException(status_code=403, detail="Access denied: Admin role required")
+
+    # Added admin condition: Access only for trusted admin devices
+    if claims["deviceid"] not in ADMIN_TRUSTED_DEVICES:
+        raise HTTPException(status_code=403, detail="Access denied: Device not approved for admin")
+    
     return {
         "status": "ok-local", 
         "subject": claims["sub"], 
