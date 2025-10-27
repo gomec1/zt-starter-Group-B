@@ -21,27 +21,38 @@ BUSINESS_HOURS_START = int(os.getenv("BUSINESS_HOURS_START", "7"))
 BUSINESS_HOURS_END = int(os.getenv("BUSINESS_HOURS_END", "19"))    
 TZ = ZoneInfo("Europe/Zurich")
 
+# Policy Decision Point
+def evaluate_policy(role: str, deviceid: str, path: str) -> str:
+    now = datetime.now(TZ)
+
+    if path == "/admin":
+        if role != "admin":
+            return "deny"
+        if deviceid not in ADMIN_TRUSTED_DEVICES:
+            return "step_up" 
+        if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
+            return "step_up"
+
+    else:
+        if deviceid not in TRUSTED_DEVICES:
+            return "deny"
+        if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
+            return "step_up"
+            
+    return "allow"
+
 class LoginIn(BaseModel):
     username: str
     password: str
     deviceid: str # Added deviceid to the login
-    # location or/and IP Adresse
 
 @APP.post("/local-login")
-def local_login(inp: LoginIn, resp: Response):
+def local_login(inp: LoginIn, resp: Response, req: Request):
     # Local user base (decoupled from IdP)
     if not ((inp.username == "local" and inp.password == "local") or (inp.username == "admin" and inp.password == "admin")):
         raise HTTPException(status_code=401, detail="Login denied: Bad local credentials")
-   
-    # Added condition: Only trusted devices can log in
-    if inp.deviceid not in TRUSTED_DEVICES: 
-        raise HTTPException(status_code=403, detail="Login denied: Device not trusted")
-    
-    # Added condition: Login only during Business Hours
+
     now = datetime.now(TZ)
-    if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
-        raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
-    
     role = "admin" if (inp.username == "admin" and inp.password == "admin") else "local_user"
 
     claims = {
@@ -53,14 +64,23 @@ def local_login(inp: LoginIn, resp: Response):
         "deviceid": inp.deviceid, # Added deviceid to the claims that are used for the token
         }
 
-    token = jwt.encode(claims, LOCAL_SECRET, algorithm=LOCAL_ALG)
-    resp.set_cookie("local_session", token, httponly=True, samesite="lax")
-    return {
-        "status": "local_session_issued", 
-        "deviceid": inp.deviceid, # Return deviceid added
-        "time": now, # Return time of login
-        "role": role, # Role added
-        } 
+    # Policy Enforcement Point
+    decision = evaluate_policy(claims["role"], claims["deviceid"], req.url.path)
+    if decision == "deny":
+        raise HTTPException(status_code=403, detail="Policy denied access")
+    if decision == "step_up":
+        raise HTTPException(status_code=401, detail="Policy requires step-up verification")
+    if decision == "allow":
+        token = jwt.encode(claims, LOCAL_SECRET, algorithm=LOCAL_ALG)
+        resp.set_cookie("local_session", token, httponly=True, samesite="lax")
+        
+        return {
+            "decision": "Policy allowed access",
+            "status": "local_session_issued", 
+            "deviceid": inp.deviceid, # Return deviceid added
+            "time": now, # Return time of login
+            "role": role, # Role added
+            } 
 
 @APP.get("/local-resource")
 def local_resource(req: Request):
@@ -73,22 +93,21 @@ def local_resource(req: Request):
         raise HTTPException(status_code=401, detail="Access denied: Invalid local session")
     # Minimal local check; students can add local context rules here too
     
-    # Added condition: Only trusted devices can access resources
-    if claims["deviceid"] not in TRUSTED_DEVICES: 
-        raise HTTPException(status_code=403, detail="Access denied: Device not trusted")
+    # Policy Enforcement Point
+    decision = evaluate_policy(claims["role"], claims["deviceid"], req.url.path)
+    if decision == "deny":
+        raise HTTPException(status_code=403, detail="Policy denied access")
+    if decision == "step_up":
+        raise HTTPException(status_code=401, detail="Policy requires step-up verification")
 
-    # Added condition: Access only during Business Hours
-    now = datetime.now(TZ)
-    if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
-        raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
-
-    return {
-        "status": "ok-local", 
-        "subject": claims["sub"], 
-        "role": claims["role"],
-        "deviceid": claims["deviceid"], # Return deviceid to show which device logged in
-        }
-
+    if decision == "allow":
+        return {
+            "decision": "Policy allowed access",
+            "status": "ok-local", 
+            "subject": claims["sub"], 
+            "role": claims["role"],
+            "deviceid": claims["deviceid"], # Return deviceid to show which device logged in
+            }
 
 @APP.get("/admin")
 def local_resource(req: Request):
@@ -101,29 +120,21 @@ def local_resource(req: Request):
         raise HTTPException(status_code=401, detail="Access denied: Invalid local session")
     # Minimal local check; students can add local context rules here too
     
-    # Added condition: Only trusted devices can access resources
-    if claims["deviceid"] not in TRUSTED_DEVICES: 
-        raise HTTPException(status_code=403, detail="Access denied: Device not trusted")
-
-    # Added condition: Access only during Business Hours
-    now = datetime.now(TZ)
-    if not (BUSINESS_HOURS_START <= now.hour < BUSINESS_HOURS_END):
-        raise HTTPException(status_code=403, detail="Login denied: Outside business hours")
-
-    # Added admin condition: Access only for admins
-    if not claims["role"] == "admin":
-        raise HTTPException(status_code=403, detail="Access denied: Admin role required")
-
-    # Added admin condition: Access only for trusted admin devices
-    if claims["deviceid"] not in ADMIN_TRUSTED_DEVICES:
-        raise HTTPException(status_code=403, detail="Access denied: Device not approved for admin")
+    # Policy Enforcement Point# Policy Enforcement Point
+    decision = evaluate_policy(claims["role"], claims["deviceid"], req.url.path)
+    if decision == "deny":
+        raise HTTPException(status_code=403, detail="Policy denied access")
+    if decision == "step_up":
+        raise HTTPException(status_code=401, detail="Policy requires step-up verification")
     
-    return {
-        "status": "ok-local", 
-        "subject": claims["sub"], 
-        "role": claims["role"],
-        "deviceid": claims["deviceid"], # Return deviceid to show which device logged in
-        }
+    if decision == "allow":
+        return {
+            "decision": "Policy allowed access",
+            "status": "ok-local", 
+            "subject": claims["sub"], 
+            "role": claims["role"],
+            "deviceid": claims["deviceid"], # Return deviceid to show which device logged in
+            }
 
 # Logout added to clear session for easier and faster testing
 @APP.post("/local-logout") 
