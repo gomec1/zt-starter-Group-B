@@ -127,7 +127,7 @@ Our implementation expands the baseline architecture with additional **Zero Trus
 ### 1. Clone the repository
 
 ```bash
-git clone git@github.com:gomec1/zt-starter-Group-B.git
+git clone https://github.com/gomec1/zt-starter-Group-B.git
 cd zt-zero-trust-auth
 ```
 
