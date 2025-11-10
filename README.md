@@ -138,9 +138,36 @@ docker compose up --build
 ```
 
 ### 3. Test the authentication flow
-
+#### 3.1 idp + resource api
 ```bash
 make test-curl
+```
+#### 3.2 local service
+
+Login options:
+
+Username: local , Password: local  
+Username: admin , Password: admin
+
+TRUSTED_DEVICES = ["lab-1", "lab-2", "office-pc"]  
+ADMIN_TRUSTED_DEVICES = ["lab-1"]
+
+JSON Example for Login with FastAPI Website
+
+```bash
+{
+  "username": "local",
+  "password": "local",
+  "deviceid": "office-pc"
+}
+```
+
+```bash
+{
+  "username": "admin",
+  "password": "admin",
+  "deviceid": "lab-1"
+}
 ```
 
 Expected result:
