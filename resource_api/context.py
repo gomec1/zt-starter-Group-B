@@ -12,6 +12,7 @@ TRUSTED_DEVICES = {
     "admin": ["admin-laptop"],
 }
 
+
 def evaluate_request_context(claims: dict, path: str, method: str) -> Decision:
     role = claims.get("role")
     risk_level = claims.get("risklevel", "low") 
@@ -20,52 +21,73 @@ def evaluate_request_context(claims: dict, path: str, method: str) -> Decision:
     current_time_utc = datetime.datetime.now(datetime.timezone.utc)
     current_hour = current_time_utc.hour
     
-    # ----------------------------------------------------
-    # 1. GLOBAL ACCESS CONTROL WITH TRUSTED DEVICE EXEMPTION
-    
-    # Safely get the list of trusted devices for the current role. 
-    # If the role is not found (e.g., 'viewer'), it returns an empty list [], preventing a KeyError crash.
     trusted_devices_for_role = TRUSTED_DEVICES.get(role, [])
+    is_trusted_device = device_id in trusted_devices_for_role
+    
+    # ----------------------------------------------------
+    # 1. ADMIN OVERRIDE POLICY (Priority Check)
+    # Admins are handled first to prevent the generic High Risk Deny (Rule 2a) from blocking them entirely.
+    if role == "admin":
+        
+        if path in SENSITIVE_PATHS:
+            # 1a: Admin on Sensitive Path
+            if is_trusted_device:
+                # Sensitive access on trusted device requires step-up (Challenge)
+                print(f"Admin Policy (Risk: {risk_score}/{risk_level}): Sensitive path access requires step-up challenge (Trusted Device).")
+                return "challenge"
+            else:
+                # Sensitive access on untrusted device is too risky (DENY)
+                print(f"Admin Policy (Risk: {risk_score}/{risk_level}): Critical Deny - Sensitive path accessed on UNTRUSTED device.")
+                return "deny"
+       
+        else: # path not in SENSITIVE_PATHS
+            # 1b: Admin on Non-Sensitive Path
+            if is_trusted_device:
+                # Non-sensitive access on trusted device (Allow)
+                print(f"Admin Policy (Risk: {risk_score}/{risk_level}): Non-sensitive path access allowed on trusted device.")
+                return "allow"
+            else:
+                # Non-sensitive access on untrusted device requires step-up (Challenge)
+                print(f"Admin Policy (Risk: {risk_score}/{risk_level}): Non-sensitive path access on untrusted device requires challenge.")
+                return "challenge"
 
-    # RULE 1a: ADMIN EXEMPTION
-    # Allows a trusted admin to access non-sensitive paths, even if the IdP scores them high.
-    if role == "admin" and device_id in trusted_devices_for_role and path not in SENSITIVE_PATHS:
-        print(f"Global Allow (Admin Exempt): Admin on trusted device allowed access to non-sensitive path.")
-        return "allow"
 
-    # Rule 1b: Deny ALL High Risk attempts universally
+    # ----------------------------------------------------
+    # 2. GLOBAL ACCESS CONTROL FOR NON-ADMINS
+    
+    # Rule 2a: Deny ALL High Risk attempts universally
     if risk_level == "high":
-        print(f"Global Deny: User has HIGH risk score ({risk_score}).")
+        print(f"Global Deny (Risk: {risk_score}/{risk_level}): User has HIGH risk score.")
         return "deny" 
 
-    # Rule 1c: Trusted Device Exemption for Medium Risk
-    if risk_level == "medium" and device_id in trusted_devices_for_role and path not in SENSITIVE_PATHS:
-        print(f"Global Allow (Medium Exempt): User has MEDIUM risk ({risk_score}) but is on a trusted device: {device_id}.")
+    # Rule 2b: Trusted Device Exemption for Medium Risk
+    if risk_level == "medium" and is_trusted_device and path not in SENSITIVE_PATHS:
+        print(f"Global Allow (Medium Exempt - Risk: {risk_score}/{risk_level}): User is on a trusted device: {device_id} for a non-sensitive path.")
         return "allow"
 
-    # Rule 1d: Challenge ALL remaining Medium Risk attempts
+    # Rule 2c: Challenge ALL remaining Medium Risk attempts
     if risk_level == "medium":
-        print(f"Global Challenge: User has MEDIUM risk score ({risk_score}) and is NOT on a trusted device.")
+        print(f"Global Challenge (Risk: {risk_score}/{risk_level}): User has MEDIUM risk score and context requires step-up.")
         return "challenge"
-      
-    # Path-Specific Overrides
     
-    # 2. HTTP Method Restriction for Sensitive Path
+    
+    # ----------------------------------------------------
+    # 3. Path-Specific Overrides
+    
+    # Rule 3a: HTTP Method Restriction for Sensitive Path
     if path in SENSITIVE_PATHS and method != "GET":
-        print(f"Context Deny: Sensitive path {path} only allows GET method. Received {method}.")
+        print(f"Context Deny (Risk: {risk_score}/{risk_level}): Sensitive path {path} only allows GET method. Received {method}.")
         return "deny"
 
-    # 3. Role-Based Denial for Sensitive Path
+    # Rule 3b: Role-Based Denial for Sensitive Path
     if path == "/export" and role == "viewer":
-        print(f"Context Deny: Role '{role}' is explicitly forbidden from accessing {path}")
+        print(f"Context Deny (Risk: {risk_score}/{risk_level}): Role '{role}' is explicitly forbidden from accessing {path}")
         return "deny"
-    
-    # 4. Time-Based Challenge for Sensitive Path (Non-Admins)
-    # This rule provides a separate, dedicated check for off-hours access to sensitive data.
+
+    # Rule 3c: Time-Based Challenge for Sensitive Path (Non-Admins)
     if path in SENSITIVE_PATHS and role != "admin":
         if current_hour not in BUSINESS_HOURS:
-            print(f"Context Challenge: Sensitive path {path} accessed outside business hours ({current_hour}:00 UTC) by non-admin.")
+            print(f"Context Challenge (Risk: {risk_score}/{risk_level}): Sensitive path {path} accessed outside business hours ({current_hour}:00 UTC) by non-admin.")
             return "challenge" 
         
-    # Default: If the risk is LOW, and no other specific rule denies or challenges, allow access.
     return "allow"
