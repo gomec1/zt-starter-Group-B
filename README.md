@@ -20,8 +20,92 @@ The updated architecture focuses on **continuous verification** and **context-ba
 
 ---
 
-## 🧩 Architecture Overview
+## 🧩 New Architecture Overview
 
+The following diagram illustrates the extended Zero Trust architecture with all three services (IdP, Resource API, Local Service):
+
+
+### 🔑 IdP + Resource API
+
+```mermaid
+flowchart LR
+  U["User / Client"]
+
+  subgraph IDP["Identity Provider (IdP)"]
+    direction TB
+    LOGIN["POST /login"]
+    ROLE["ROLE_RISK mapping"]
+    DEV["TRUSTED_DEVICES list"]
+    RISK["Compute Risk & Trust<br/>- Base risk by role<br/>- Trusted device check<br/>- Business hours check<br/>→ riskscore, risklevel, trustscore"]
+    TOKEN["Issue JWT (ALG)<br/>Claims: sub, role, iat, exp, typ,<br/>deviceid, riskscore, risklevel, trustscore"]
+  end
+
+  subgraph RES["Resource API"]
+    direction TB
+    API["Endpoints: /resource, /export"]
+    AUTH["auth.get_claims<br/>Validate and decode JWT"]
+    CTX["context.evaluate_request_context<br/>Rules:<br/>- Admin + trusted + non-sensitive → allow<br/>- High risk → deny<br/>- Medium + trusted → allow<br/>- Medium + untrusted → challenge<br/>- /export only GET<br/>- viewer role denied on /export<br/>- Non-admin off-hours /export → challenge"]
+    OK["200 {status: ok}"]
+    CHAL["200 {status: mfa_required}"]
+    DENY["403 {denied by context policy}"]
+  end
+
+  %% Login and Token issuance
+  U -->|username, password, device_id?| LOGIN
+  LOGIN --> ROLE
+  LOGIN --> DEV
+  ROLE --> RISK
+  DEV --> RISK
+  RISK --> TOKEN
+  TOKEN -->|access_token| U
+
+  %% Protected resource requests
+  U -->|Authorization: Bearer JWT| API
+  API --> AUTH
+  AUTH --> CTX
+
+  %% Context-based decision
+  CTX -->|allow| OK
+  CTX -->|challenge| CHAL
+  CTX -->|deny| DENY
+
+  %% Responses back to client
+  OK --> U
+  CHAL --> U
+  DENY --> U
+```
+
+### 🔑 Local Service
+
+
+```mermaid
+flowchart LR
+  U["User / Client"]
+
+  subgraph LS["Local Service"]
+    direction TB
+
+    LOGIN["User login<br/>POST /local-login<br/>(username, password, deviceid)"]
+    POLICY["Policy evaluation<br/>evaluate_policy(role, deviceid, path)<br/><br/>Checks:<br/>• Trusted device<br/>• Business hours<br/>• Admin restrictions"]
+    TOKEN["Generate JWT (ALG)<br/>sub, role, deviceid, exp=10 min"]
+    COOKIE["Set HttpOnly cookie<br/>local_session (JWT)"]
+    ACCESS["Access endpoints<br/>/local-resource or /admin<br/>Validate cookie → Apply same policy"]
+    RESULT["Outcome:<br/>✔ Allow → access granted<br/>⚠ Step-Up → MFA required<br/>❌ Deny → access blocked"]
+    LOGOUT["POST /local-logout<br/>Delete cookie (end session)"]
+  end
+
+  %% Linear workflow
+  U -->|Login credentials + deviceid| LOGIN
+  LOGIN --> POLICY
+  POLICY -->|Compliant| TOKEN
+  TOKEN --> COOKIE
+  COOKIE -->|Session established| U
+  U -->|Send cookie| ACCESS
+  ACCESS --> POLICY
+  POLICY --> RESULT
+  RESULT -->|Allow / Step-Up / Deny| U
+  U -->|Logout| LOGOUT
+```
 
 ---
 
@@ -84,8 +168,8 @@ Each service provides testable endpoints for login, token verification, and loca
 
 ```
 zt-zero-trust-auth/
-│-- docker-compose.yml
-│-- Makefile
+│-- docs/
+│   ├── NOCH EINFügen XXXXXX
 │-- idp/
 │   ├── app.py
 │   ├── Dockerfile
@@ -100,6 +184,12 @@ zt-zero-trust-auth/
 │   ├── app.py
 │   ├── Dockerfile
 │   ├── .env
+│-- .env
+│-- .gitignore
+│-- docker-compose.yml
+│-- Makefile
+│-- README.md
+│-- requirements.txt
 ```
 
 ---
