@@ -1,70 +1,53 @@
-# 🔐 Zero Trust Authentication Starter Repository
+# 🔐 Zero Trust Authentication – Extended Prototype Group-B
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688.svg)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/built%20with-Docker-blue.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Built with Docker](https://img.shields.io/badge/built%20with-Docker-blue.svg)](https://www.docker.com/)
 
 ---
 
 ## 💡 Overview
 
-This repository provides the **baseline for the group assignment** in the module  
-**Software Design & Architecture – Zero Trust Authentication in Distributed Systems.**
+This repository demonstrates the implementation of **Zero Trust Authentication** concepts within a distributed system architecture.
+It extends a baseline system consisting of:
 
-It includes a working prototype illustrating the transition from **perimeter-based security** to **Zero Trust verification** using authentication, identity, and contextual checks.
+* **IdP (Identity Provider)**
+* **Resource API**
+* **Local Service**
 
-Students will extend this code to explore:
-
-- Centralised vs. decentralised authentication  
-- Token-based identity verification  
-- Context-aware access control (device, time, sensitivity)
+The updated architecture focuses on **continuous verification** and **context-based access decisions** rather than static perimeter trust.
 
 ---
 
 ## 🧩 Architecture Overview
 
-```mermaid
-flowchart LR
-    A[User / Client] -->|Login request| B[IdP Service]
-    B -->|JWT token| C[Resource API]
-    C -->|Access decision| A
-    A -->|Direct auth| D[Local Service]
-    D -->|Local session token| A
-
-    %% Styling
-    classDef idp fill:#009688,stroke:#00695c,color:#fff;
-    classDef resource fill:#03a9f4,stroke:#0277bd,color:#fff;
-    classDef local fill:#8bc34a,stroke:#558b2f,color:#fff;
-
-    class B idp;
-    class C resource;
-    class D local;
-
-    %% Caption
-    %% The diagram illustrates centralised vs. local authentication flows in a Zero Trust setup.
-```
-
-**Services**
-
-- **IdP (`/idp`)** – Issues signed JWT tokens for authenticated users  
-- **Resource API (`/resource_api`)** – Verifies tokens and enforces contextual rules  
-- **Local Service (`/local_service`)** – Demonstrates standalone local authentication
-
-Each service is packaged as a **Docker container** and orchestrated via `docker-compose.yml`.
 
 ---
 
-## 🚀 Getting Started
+## ⚙️ Zero Trust Extensions
+
+Our implementation expands the baseline architecture with additional **Zero Trust mechanisms**:
+
+| Area                  | Extension                                             | Description                                                                 |
+| --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Policy Evaluation** | Introduced in both `resource_api` and `local_service` | Each request is dynamically checked based on user role, device, and context |
+| **Contextual Checks** | Business hours, trusted devices, admin-only endpoints | Access is granted, challenged (step-up), or denied dynamically              |
+| **Session Security**  | JWT stored in secure cookie                           | Enables short-lived local sessions with continuous verification             |
+| **JWT Handling**      | Encrypted using configured `ALG` algorithm            | Tokens include contextual claims (role, device, type, expiry)               |
+
+---
+
+## 🚀 Run Instructions
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/bfh-architecture/zt-starter.git
-cd zt-starter
+git clone https://github.com/<your-team>/zt-zero-trust-auth.git
+cd zt-zero-trust-auth
 ```
 
-### 2. Start the environment
+### 2. Build and start the environment
 
 ```bash
 docker compose up --build
@@ -76,81 +59,69 @@ docker compose up --build
 make test-curl
 ```
 
-Expected result:  
-A valid JWT is issued by the IdP and verified by the Resource API.
+Expected result:
+
+* IdP issues a signed JWT
+* Resource API and Local Service evaluate context before granting access
 
 ---
 
-## 🧠 What You’ll Do
+## 🧪 Test via Browser (Swagger UI)
 
-In your assignment, you will:
+Once Docker is running, you can access and test all APIs through their **interactive FastAPI documentation**:
 
-- Extend the **IdP** to include additional claims (e.g., device, role).  
-- Add **contextual verification logic** in `resource_api/context.py`.  
-- Implement a **decentralised local authentication** method in `local_service/`.  
-- Document and reflect on the **trade-offs** between the two approaches.
+| Service           | URL                                                      |
+| ----------------- | -------------------------------------------------------- |
+| **IdP Service**   | [http://localhost:8001/docs](http://localhost:8001/docs) |
+| **Resource API**  | [http://localhost:8002/docs](http://localhost:8002/docs) |
+| **Local Service** | [http://localhost:8003/docs](http://localhost:8003/docs) |
+
+Each service provides testable endpoints for login, token verification, and local session handling.
 
 ---
 
 ## 📦 Repository Structure
 
 ```
-zt-starter/
+zt-zero-trust-auth/
 │-- docker-compose.yml
 │-- Makefile
 │-- idp/
 │   ├── app.py
-│   ├── .env
 │   ├── Dockerfile
+│   ├── .env
 │-- resource_api/
 │   ├── app.py
-│   ├── auth.py
 │   ├── context.py
-│   ├── .env
+│   ├── auth.py
 │   ├── Dockerfile
+│   ├── .env
 │-- local_service/
 │   ├── app.py
-│   ├── .env
 │   ├── Dockerfile
+│   ├── .env
 ```
 
-All `.env` files are included intentionally for **educational transparency**.
+---
+
+## 🏁 Summary
+
+| Component             | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| **IdP**               | Centralised authentication issuing signed JWTs               |
+| **Resource API**      | Context-aware policy enforcement and JWT verification        |
+| **Local Service**     | Independent local authentication with dynamic access control |
+| **Policy Evaluation** | Core element ensuring Zero Trust decision-making             |
+| **Docker Compose**    | Runs all components in isolated containers                   |
 
 ---
 
 ## 🧾 License
 
-This repository is distributed under the **MIT License**.  
-It is intended for educational use within the  
-**Bern University of Applied Sciences (BFH)** – Software Design & Architecture module.
+This project is released under the **MIT License**
+and was developed for the
+**BFH – Software Design & Architecture (SDA4) module.**
 
 ---
 
-## 👨‍🏫 Maintainer
-
-**Sebastian Höhn**  
-Lecturer, Bern University of Applied Sciences (BFH)  
-[BFH Wirtschaft – Institut Public Sector Transformation](https://www.bfh.ch/wirtschaft)
-
----
-
-## 🏁 Quick Summary
-
-| Component | Description |
-|------------|-------------|
-| `idp/` | Issues and signs JWT tokens (centralised identity provider) |
-| `resource_api/` | Verifies tokens, checks context and access policies |
-| `local_service/` | Independent local authentication demo |
-| `Makefile` | Contains sample test commands |
-| `.env` files | Predefined configuration for reproducibility |
-
----
-
-## 🧭 Next Steps
-
-1. Clone this repository.  
-2. Extend the authentication and verification logic.  
-3. Reflect on your architecture and design decisions.  
-4. Submit your repository link via Moodle by **10 November 2025**.
-
-> 🧩 *In this project, you will experience how trust becomes contextual — moving from network borders to evidence-based access decisions.*
+✅ *This extended version demonstrates the shift from static credential-based access to dynamic, context-driven Zero Trust enforcement across distributed services.*
