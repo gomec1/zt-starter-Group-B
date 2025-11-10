@@ -22,3 +22,9 @@ def export(claims: dict = Depends(get_claims)):
     if decision == "challenge":
         return {"status": "mfa_required", "reason": "sensitive endpoint"}
     return {"status": "export_ready"}
+
+# Redirecting http://localhost:8002 to http://localhost:8002/docs 
+from fastapi.responses import RedirectResponse
+@APP.get("/")
+def root():
+    return RedirectResponse(url="/docs")

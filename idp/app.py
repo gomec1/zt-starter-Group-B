@@ -85,3 +85,9 @@ def login(inp: LoginIn):
 
     token = jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALG)
     return {"access_token": token, "token_type": "bearer"}
+
+# Redirecting http://localhost:8001 to http://localhost:8001/docs 
+from fastapi.responses import RedirectResponse
+@APP.get("/")
+def root():
+    return RedirectResponse(url="/docs")
